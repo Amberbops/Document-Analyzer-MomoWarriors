@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Document Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* =========================================================================
+     DESIGN TOKENS
+     Concept: "the reading room" — a scholar's desk elevated with a signature
+     tri-color spectrum thread (analyze / extract / rewrite) that runs through
+     the header, the doc-index progress and the streaming bar as one motif.
+     ========================================================================= */
+  :root{
+    --paper: #0A0C11;
+    --paper-raised: #12151C;
+    --paper-sunken: #0D0F15;
+    --ink: #EEF0F4;
+    --ink-soft: #9BA1AE;
+    --ink-faint: #656C79;
+    --rule: rgba(255,255,255,0.09);
+    --rule-strong: rgba(255,255,255,0.18);
+
+    --accent-analyze: #6FA6E0;
+    --accent-analyze-tint: rgba(111,166,224,0.14);
+    --accent-extract: #E8A94A;
+    --accent-extract-tint: rgba(232,169,74,0.14);
+    --accent-rewrite: #B99CF0;
+    --accent-rewrite-tint: rgba(185,156,240,0.14);
+
+    --success: #5FC493;
+    --danger: #EC7C71;
+    --danger-tint: rgba(236,124,113,0.14);
+
+    --spectrum: linear-gradient(90deg, var(--accent-analyze) 0%, var(--accent-extract) 50%, var(--accent-rewrite) 100%);
+    --hero-gradient: linear-gradient(100deg, #8FC6FF 0%, #E7A9E0 45%, #C6B4FF 100%);
+
+    --radius: 12px;
+    --radius-sm: 8px;
+    --radius-pill: 999px;
+
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-sm: 0 2px 10px rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 16px 40px -14px rgba(0,0,0,0.55);
+    --shadow-lift: 0 24px 56px -18px rgba(0,0,0,0.6);
+    --glow: 0 0 0 1px var(--rule), 0 8px 30px -10px rgba(0,0,0,0.6);
+
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+    --mode-color: var(--accent-analyze);
+    --mode-tint: var(--accent-analyze-tint);
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:
+      radial-gradient(1100px 620px at 6% -10%, rgba(111,166,224,0.16), transparent 60%),
+      radial-gradient(900px 560px at 100% -6%, rgba(185,156,240,0.13), transparent 58%),
+      radial-gradient(700px 500px at 92% 40%, rgba(232,169,74,0.05), transparent 60%),
+      var(--paper);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+  }
+  /* faint architectural grid, echoing the reference mock */
+  body::before{
+    content:"";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(1200px 800px at 30% 0%, black, transparent 75%);
+    -webkit-mask-image: radial-gradient(1200px 800px at 30% 0%, black, transparent 75%);
+  }
+  header, .hero, .desk{ position: relative; z-index: 1; }
+  ::selection{ background: var(--mode-tint); color: var(--ink); }
+  :focus-visible{
+    outline: 2px solid var(--mode-color);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button{ font-family: inherit; }
+  svg{ display:block; }
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+  }
+
+  /* ---------- Header ---------- */
+  header{
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--rule);
+    background: rgba(10,12,17,0.7);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+  .header-spectrum{
+    position:absolute;
+    left:0; right:0; bottom:-1px;
+    height: 2px;
+    background: var(--spectrum);
+    background-size: 200% 100%;
+    animation: spectrumDrift 10s linear infinite;
+    opacity: 0.9;
+  }
+  @keyframes spectrumDrift{
+    0%{ background-position: 0% 0; }
+    100%{ background-position: 200% 0; }
+  }
+
+  .wordmark{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+  .logo-mark{
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, var(--accent-analyze), var(--accent-extract), var(--accent-rewrite), var(--accent-analyze));
+    animation: markSpin 14s linear infinite;
+    box-shadow: 0 0 0 3px var(--paper-raised), var(--shadow-xs);
+    flex-shrink: 0;
+  }
+  @keyframes markSpin{ to{ transform: rotate(360deg); } }
+
+  .wordmark-text{ display:flex; flex-direction:column; gap:1px; }
+  .wordmark h1{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+    margin:0;
+    line-height:1.15;
+  }
+  .wordmark .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .status{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding: 7px 14px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-pill);
+    background: var(--paper-raised);
+    transition: border-color 0.3s var(--ease), color 0.3s var(--ease);
+  }
+  .status-dot{
+    width:7px; height:7px; border-radius:50%;
+    background: var(--ink-faint);
+    transition: background 0.3s;
+    position: relative;
+  }
+  .status-dot.online{ background: var(--success); }
+  .status-dot.online::after{
+    content:"";
+    position:absolute; inset: -4px;
+    border-radius: 50%;
+    border: 1px solid var(--success);
+    animation: pulseRing 2s var(--ease) infinite;
+  }
+  .status-dot.offline{ background: var(--danger); }
+  @keyframes pulseRing{
+    0%{ transform: scale(0.6); opacity: 0.9; }
+    100%{ transform: scale(2.1); opacity: 0; }
+  }
+
+  /* ---------- Hero ---------- */
+  .hero{
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 64px 32px 8px;
+  }
+  .hero-kicker{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 22px;
+    animation: fadeInUp 0.6s var(--ease) both;
+  }
+  .hero-kicker::before{
+    content:"";
+    width: 26px; height: 1px;
+    background: var(--rule-strong);
+  }
+  .hero-heading{
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(38px, 5.2vw, 62px);
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    margin: 0;
+    color: var(--ink);
+    animation: fadeInUp 0.6s var(--ease) 0.06s both;
+  }
+  .hero-heading em{
+    font-style: italic;
+    font-weight: 500;
+    background: var(--hero-gradient);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: heroShine 7s ease-in-out infinite;
+  }
+  @keyframes heroShine{
+    0%, 100%{ background-position: 0% 50%; }
+    50%{ background-position: 100% 50%; }
+  }
+  .hero-sub{
+    display:flex;
+    align-items:flex-start;
+    gap: 26px;
+    max-width: 640px;
+    margin-top: 22px;
+    animation: fadeInUp 0.6s var(--ease) 0.12s both;
+  }
+  .hero-sub p{
+    margin:0;
+    font-size: 14.5px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+  .hero-orb{
+    flex-shrink:0;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--rule-strong);
+    position: relative;
+    margin-top: 2px;
+  }
+  .hero-orb::before{
+    content:"";
+    position:absolute; inset: 7px;
+    border-radius: 50%;
+    background: var(--spectrum);
+    filter: blur(1px);
+    opacity: 0.85;
+    animation: orbPulse 3.4s var(--ease) infinite;
+  }
+  @keyframes orbPulse{
+    0%, 100%{ transform: scale(0.85); opacity: 0.6; }
+    50%{ transform: scale(1); opacity: 1; }
+  }
+  .hero-rule{
+    max-width: 1360px;
+    margin: 44px auto 0;
+    padding: 0 32px;
+  }
+  .hero-rule span{
+    display:block;
+    height: 1px;
+    background: linear-gradient(to right, var(--rule), transparent 70%);
+  }
+  @media (max-width: 860px){
+    .hero{ padding: 40px 18px 4px; }
+    .hero-sub{ flex-direction: column; gap: 12px; }
+  }
+
+  /* ---------- Layout ---------- */
+  .desk{
+    display:grid;
+    grid-template-columns: 380px 1fr;
+    gap: 24px;
+    min-height: calc(100vh - 65px);
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 28px 32px 48px;
+  }
+  @media (max-width: 860px){
+    .desk{ grid-template-columns: 1fr; padding: 20px 16px 36px; gap: 18px; }
+    header{ padding: 16px 18px; }
+  }
+
+  .panel-input{
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 24px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.02));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: var(--glow);
+    height: fit-content;
+    animation: fadeInUp 0.5s var(--ease) both;
+    transition: border-color 0.3s var(--ease);
+  }
+  .panel-output{
+    padding: 0;
+    display:flex;
+    flex-direction:column;
+    animation: fadeInUp 0.5s var(--ease) 0.08s both;
+  }
+  .spotlight{
+    position: relative;
+    overflow: hidden;
+  }
+  .spotlight::after{
+    content:"";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(280px circle at var(--mx, 50%) var(--my, 50%), var(--mode-tint), transparent 70%);
+    opacity: 0;
+    transition: opacity 0.4s var(--ease);
+    z-index: 0;
+  }
+  .spotlight:hover::after{ opacity: 1; }
+  .spotlight > *{ position: relative; z-index: 1; }
+  @keyframes fadeInUp{
+    from{ opacity: 0; transform: translateY(10px); }
+    to{ opacity: 1; transform: translateY(0); }
+  }
+
+  .section-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 10px 0;
+  }
+
+  /* ---------- Source tabs (upload / paste) ---------- */
+  .source-tabs{
+    position: relative;
+    display:flex;
+    gap:4px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .source-tab{
+    background:none;
+    border:none;
+    padding: 8px 4px 10px 4px;
+    margin-right: 18px;
+    font-size: 13px;
+    color: var(--ink-faint);
+    cursor:pointer;
+    border-bottom: 2px solid transparent;
+    transform: translateY(1px);
+    transition: color 0.15s var(--ease), border-color 0.2s var(--ease);
+  }
+  .source-tab:hover{ color: var(--ink-soft); }
+  .source-tab.active{
+    color: var(--ink);
+    border-bottom-color: var(--mode-color);
+  }
+
+  /* ---------- Dropzone ---------- */
+  .dropzone{
+    display:block;
+    border: 1.5px dashed var(--rule-strong);
+    border-radius: var(--radius);
+    padding: 30px 16px;
+    text-align:center;
+    cursor:pointer;
+    transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.15s var(--ease);
+    position: relative;
+  }
+  .dropzone:hover{
+    border-color: var(--mode-color);
+    background: var(--mode-tint);
+  }
+  .dropzone.drag-over{
+    border-color: var(--mode-color);
+    background: var(--mode-tint);
+    transform: scale(1.01);
+  }
+  .dropzone input{ display:none; }
+  .dropzone .dz-icon{
+    color: var(--ink-faint);
+    display:flex;
+    justify-content:center;
+    margin-bottom: 10px;
+    transition: color 0.2s var(--ease), transform 0.2s var(--ease);
+  }
+  .dropzone:hover .dz-icon, .dropzone.drag-over .dz-icon{
+    color: var(--mode-color);
+    transform: translateY(-2px);
+  }
+  .dropzone .dz-text{ font-size: 13px; color: var(--ink-soft); }
+  .dropzone .dz-sub{ font-size: 11px; color: var(--ink-faint); margin-top: 4px; }
+
+  .paste-area{ display:none; }
+  .paste-area.active{ display:block; animation: fadeInUp 0.3s var(--ease) both; }
+  .paste-area textarea{
+    width:100%;
+    min-height: 160px;
+    padding: 12px;
+    border: 1.5px solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    resize: vertical;
+    background: var(--paper);
+    color: var(--ink);
+    transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  }
+  .paste-area textarea:focus{ border-color: var(--mode-color); box-shadow: 0 0 0 3px var(--mode-tint); outline: none; }
+  .paste-note{
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--ink-faint);
+    padding: 10px 12px;
+    background: var(--paper-sunken);
+    border-left: 2px solid var(--rule-strong);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+  .paste-note code{
+    font-family: 'IBM Plex Mono', monospace;
+    background: rgba(255,255,255,0.08);
+    color: var(--ink);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  /* ---------- Document card (after upload) ---------- */
+  .doc-card{
+    margin-top: 16px;
+    padding: 14px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-sm);
+    background: var(--paper-raised);
+    display:none;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-xs);
+  }
+  .doc-card.show{ display:flex; gap: 12px; align-items:flex-start; animation: fadeInUp 0.35s var(--ease) both; }
+  .doc-card .doc-icon{
+    flex-shrink:0;
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    background: var(--accent-extract-tint);
+    color: var(--accent-extract);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .doc-card .doc-body{ min-width: 0; flex: 1; }
+  .doc-card .doc-name{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 500;
+    word-break: break-all;
+  }
+  .doc-card .doc-meta{
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    margin-top: 4px;
+  }
+  .doc-card.indexing::after{
+    content:"";
+    position:absolute;
+    left:0; right:0; top:0;
+    height: 2.5px;
+    background: var(--spectrum);
+    background-size: 200% 100%;
+    animation: scan 1.3s linear infinite;
+  }
+  @keyframes scan{
+    0%{ background-position: 0% 0; }
+    100%{ background-position: 200% 0; }
+  }
+
+  /* ---------- Mode tags ---------- */
+  .mode-row{
+    display:flex;
+    gap:8px;
+    margin: 22px 0 16px 0;
+  }
+  .mode-tag{
+    flex:1;
+    padding: 12px 10px;
+    border: 1.5px solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    background: var(--paper-raised);
+    cursor:pointer;
+    text-align:left;
+    transition: border-color 0.18s var(--ease), background 0.18s var(--ease), transform 0.15s var(--ease), box-shadow 0.18s var(--ease);
+  }
+  .mode-tag:hover{ transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+  .mode-tag .mode-top{
+    display:flex; align-items:center; gap: 7px;
+    margin-bottom: 5px;
+  }
+  .mode-tag .mode-icon{
+    color: var(--ink-faint);
+    display:flex; align-items:center; justify-content:center;
+    width: 16px; height: 16px;
+    transition: color 0.18s var(--ease);
+  }
+  .mode-tag .mode-name{
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .mode-tag .mode-hint{
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    padding-left: 23px;
+  }
+  .mode-tag[data-mode="analyze"].active{ border-color: var(--accent-analyze); background: var(--accent-analyze-tint); box-shadow: 0 0 0 3px rgba(111,166,224,0.12); }
+  .mode-tag[data-mode="analyze"].active .mode-icon{ color: var(--accent-analyze); }
+  .mode-tag[data-mode="extract"].active{ border-color: var(--accent-extract); background: var(--accent-extract-tint); box-shadow: 0 0 0 3px rgba(232,169,74,0.14); }
+  .mode-tag[data-mode="extract"].active .mode-icon{ color: var(--accent-extract); }
+  .mode-tag[data-mode="rewrite"].active{ border-color: var(--accent-rewrite); background: var(--accent-rewrite-tint); box-shadow: 0 0 0 3px rgba(185,156,240,0.14); }
+  .mode-tag[data-mode="rewrite"].active .mode-icon{ color: var(--accent-rewrite); }
+
+  /* ---------- Query field ---------- */
+  .query-field label{
+    display:block;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  .query-field textarea{
+    width:100%;
+    min-height: 76px;
+    padding: 11px 12px;
+    border: 1.5px solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 13px;
+    resize: vertical;
+    background: var(--paper);
+    color: var(--ink);
+    transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  }
+  .query-field textarea:focus{ border-color: var(--mode-color); box-shadow: 0 0 0 3px var(--mode-tint); outline: none; }
+
+  .advanced{
+    margin-top: 14px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  .advanced input[type="number"]{
+    width: 56px;
+    padding: 5px 6px;
+    border: 1px solid var(--rule-strong);
+    border-radius: var(--radius-sm);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    background: var(--paper);
+    color: var(--ink);
+    transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  }
+  .advanced input[type="number"]:focus{ border-color: var(--mode-color); box-shadow: 0 0 0 3px var(--mode-tint); outline: none; }
+
+  /* ---------- Run button ---------- */
+  .run-btn{
+    width:100%;
+    margin-top: 22px;
+    padding: 13px;
+    border:none;
+    border-radius: var(--radius-sm);
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 13.5px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    cursor:pointer;
+    transition: background 0.2s var(--ease), transform 0.05s var(--ease), box-shadow 0.2s var(--ease);
+    display:flex; align-items:center; justify-content:center; gap: 8px;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .run-btn::before{
+    content:"";
+    position:absolute; inset:0;
+    background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,0.55) 45%, transparent 70%);
+    transform: translateX(-120%);
+    transition: transform 0.6s var(--ease);
+    z-index: -1;
+  }
+  .run-btn:hover:not(:disabled)::before{ transform: translateX(120%); }
+  .run-btn:hover:not(:disabled){ background: var(--mode-color); box-shadow: var(--shadow-md), 0 0 0 1px var(--mode-color); color: #0A0C11; }
+  .run-btn:active:not(:disabled){ transform: scale(0.99); }
+  .run-btn:disabled{
+    background: rgba(255,255,255,0.06);
+    color: var(--ink-faint);
+    cursor: not-allowed;
+  }
+  .run-btn:disabled::before{ display:none; }
+  .run-btn .spinner{
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: currentColor;
+    animation: spin 0.7s linear infinite;
+    display:none;
+  }
+  .run-btn.loading .spinner{ display:inline-block; }
+  .run-btn.loading .run-icon{ display:none; }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  /* ---------- Output panel ---------- */
+  .output-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom: 12px;
+  }
+  .output-mode-badge{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: var(--radius-pill);
+    background: var(--mode-tint);
+    color: var(--mode-color);
+    transition: background 0.2s var(--ease), color 0.2s var(--ease);
+  }
+  .output-actions{ display:flex; align-items:center; gap: 10px; }
+  .copy-btn{
+    display:flex; align-items:center; gap: 6px;
+    background: none;
+    border: 1px solid var(--rule);
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    padding: 5px 10px;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease);
+  }
+  .copy-btn:hover{ border-color: var(--mode-color); color: var(--mode-color); background: var(--mode-tint); }
+  .copy-btn:disabled{ opacity: 0.4; cursor: not-allowed; }
+
+  .output-page{
+    flex:1;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--mode-color);
+    border-radius: var(--radius);
+    padding: 30px;
+    font-size: 15px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    overflow-y: auto;
+    min-height: 320px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.2s var(--ease);
+  }
+  .output-page.streaming{
+    background: linear-gradient(to bottom, var(--mode-tint) 0%, var(--paper-raised) 3px);
+    background-size: 100% 3px;
+    background-repeat: no-repeat;
+    animation: sweep 1.4s linear infinite;
+  }
+  @keyframes sweep{
+    0%{ background-position: 0 0; }
+    100%{ background-position: 0 100%; }
+  }
+
+  .empty-state{
+    color: var(--ink-faint);
+    font-size: 13.5px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    height: 100%;
+    min-height: 260px;
+    text-align:center;
+    gap:10px;
+  }
+  .empty-state .glyph{
+    font-family:'Fraunces', serif;
+    font-size: 36px;
+    color: var(--rule-strong);
+    animation: floatY 4s ease-in-out infinite;
+  }
+  @keyframes floatY{
+    0%, 100%{ transform: translateY(0); }
+    50%{ transform: translateY(-6px); }
+  }
+
+  .error-card{
+    display:none;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 16px;
+    padding: 12px 14px;
+    background: var(--danger-tint);
+    border-left: 3px solid var(--danger);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--danger);
+  }
+  .error-card.show{ display:flex; animation: shake 0.4s var(--ease); }
+  .error-card svg{ flex-shrink:0; margin-top: 1px; }
+  @keyframes shake{
+    0%, 100%{ transform: translateX(0); }
+    25%{ transform: translateX(-3px); }
+    75%{ transform: translateX(3px); }
+  }
+
+  .cursor-blink{
+    display:inline-block;
+    width: 7px; height: 1em;
+    background: var(--mode-color);
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: blink 1s step-start infinite;
+  }
+  @keyframes blink{ 50%{ opacity: 0; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">
+    <span class="logo-mark" aria-hidden="true"></span>
+    <div class="wordmark-text">
+      <h1>Document Analyzer</h1>
+      <span class="eyebrow">RAG · Groq · Chroma</span>
+    </div>
+  </div>
+  <div class="status" role="status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">checking backend&hellip;</span>
+  </div>
+  <span class="header-spectrum" aria-hidden="true"></span>
+</header>
+
+<section class="hero">
+  <div class="hero-kicker">A quiet, focused interface for large documents</div>
+  <h2 class="hero-heading">Read <em>less</em>.<br>Understand <em>more</em>.</h2>
+  <div class="hero-sub">
+    <span class="hero-orb" aria-hidden="true"></span>
+    <p>Drop a PDF, choose an intent, and let the model retrieve, reason and rewrite &mdash; streamed straight to the page.</p>
+  </div>
+</section>
+<div class="hero-rule"><span></span></div>
+
+<div class="desk">
+
+  <!-- ============ INPUT PANEL ============ -->
+  <div class="panel-input spotlight" id="inputPanel">
+    <p class="section-label">Source</p>
+
+    <div class="source-tabs" role="tablist" aria-label="Document source">
+      <button class="source-tab active" data-tab="upload" role="tab" aria-selected="true">Upload PDF</button>
+      <button class="source-tab" data-tab="paste" role="tab" aria-selected="false">Paste text</button>
+    </div>
+
+    <div id="uploadTab">
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept="application/pdf" aria-label="Upload a PDF document" />
+        <span class="dz-icon" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 16V4M12 4l-4 4M12 4l4 4"/>
+            <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+          </svg>
+        </span>
+        <span class="dz-text">Drag a PDF here, or click to browse</span>
+        <span class="dz-sub">Single file &middot; PDF only &middot; 20MB max</span>
+      </label>
+
+      <div class="doc-card" id="docCard">
+        <span class="doc-icon" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <path d="M14 2v6h6"/>
+          </svg>
+        </span>
+        <div class="doc-body">
+          <div class="doc-name" id="docName">&mdash;</div>
+          <div class="doc-meta" id="docMeta">&mdash;</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="pasteTab" class="paste-area" role="tabpanel">
+      <textarea id="pasteText" placeholder="Paste document text here&hellip;" aria-label="Paste document text"></textarea>
+      <div class="paste-note">
+        Raw text input isn't wired to the backend yet — the API currently
+        indexes uploaded PDFs only. Ask your backend owner to add a
+        <code>/upload-text</code> route to enable this path.
+      </div>
+    </div>
+
+    <p class="section-label" style="margin-top:26px;">Mode</p>
+    <div class="mode-row" role="radiogroup" aria-label="Analysis mode">
+      <div class="mode-tag active" data-mode="analyze" role="radio" aria-checked="true" tabindex="0">
+        <div class="mode-top">
+          <span class="mode-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>
+            </svg>
+          </span>
+          <div class="mode-name">Analyze</div>
+        </div>
+        <div class="mode-hint">Summarize &amp; interpret</div>
+      </div>
+      <div class="mode-tag" data-mode="extract" role="radio" aria-checked="false" tabindex="0">
+        <div class="mode-top">
+          <span class="mode-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>
+            </svg>
+          </span>
+          <div class="mode-name">Extract</div>
+        </div>
+        <div class="mode-hint">Pull key facts</div>
+      </div>
+      <div class="mode-tag" data-mode="rewrite" role="radio" aria-checked="false" tabindex="0">
+        <div class="mode-top">
+        <span class="mode-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+          </svg>
+        </span>
+        <div class="mode-name">Rewrite</div>
+        </div>
+        <div class="mode-hint">Clarify &amp; restructure</div>
+      </div>
+    </div>
+
+    <div class="query-field">
+      <label for="queryInput">Instruction</label>
+      <textarea id="queryInput"></textarea>
+    </div>
+
+    <div class="advanced">
+      <label for="topK">Chunks to retrieve</label>
+      <input type="number" id="topK" value="5" min="1" max="20" />
+    </div>
+
+    <button class="run-btn" id="runBtn" disabled>
+      <span class="spinner" aria-hidden="true"></span>
+      <svg class="run-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+      <span class="run-btn-label">Upload a document to begin</span>
+    </button>
+
+    <div class="error-card" id="errorCard" role="alert">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+      <span id="errorCardText"></span>
+    </div>
+  </div>
+
+  <!-- ============ OUTPUT PANEL ============ -->
+  <div class="panel-output">
+    <div class="output-header">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <p class="section-label" style="margin:0;">Result</p>
+        <span class="output-mode-badge" id="outputModeBadge">analyze</span>
+      </div>
+      <div class="output-actions">
+        <button class="copy-btn" id="copyBtn" type="button" disabled aria-label="Copy result to clipboard">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span id="copyBtnLabel">Copy</span>
+        </button>
+      </div>
+    </div>
+    <div class="output-page spotlight" id="outputPage" aria-live="polite">
+      <div class="empty-state">
+        <span class="glyph" aria-hidden="true">&sect;</span>
+        <span>Upload a document, choose a mode,<br>then run to see results here.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ---- Configuration -------------------------------------------------
+  const API_BASE = "http://127.0.0.1:8000";
+
+  // ---- Default instructions per mode ---------------------------------
+  const DEFAULT_QUERIES = {
+    analyze: "Provide a comprehensive analysis of this document's key themes and implications.",
+    extract: "Extract all key facts, entities, and data points from this document.",
+    rewrite: "Rewrite this document to be clearer, more engaging, and well-structured.",
+  };
+
+  let currentMode = "analyze";
+  let currentFileId = null;
+  let userEditedQuery = false;
+
+  const el = (id) => document.getElementById(id);
+  const dropzone = el("dropzone");
+  const fileInput = el("fileInput");
+  const docCard = el("docCard");
+  const docName = el("docName");
+  const docMeta = el("docMeta");
+  const runBtn = el("runBtn");
+  const runBtnLabel = document.querySelector("#runBtn .run-btn-label");
+  const queryInput = el("queryInput");
+  const outputPage = el("outputPage");
+  const outputModeBadge = el("outputModeBadge");
+  const errorCard = el("errorCard");
+  const errorCardText = el("errorCardText");
+  const statusDot = el("statusDot");
+  const statusText = el("statusText");
+  const topKInput = el("topK");
+  const copyBtn = el("copyBtn");
+  const copyBtnLabel = el("copyBtnLabel");
+
+  queryInput.value = DEFAULT_QUERIES.analyze;
+
+  // ---- Spotlight cursor glow (react-bits style) --------------------------
+  document.querySelectorAll(".spotlight").forEach((card) => {
+    card.addEventListener("mousemove", (e) => {
+      const rect = card.getBoundingClientRect();
+      card.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+      card.style.setProperty("--my", `${e.clientY - rect.top}px`);
+    });
+  });
+
+  function setRunLabel(text) { runBtnLabel.textContent = text; }
+
+  // ---- Backend health check -------------------------------------------
+  async function checkHealth() {
+    try {
+      const res = await fetch(`${API_BASE}/health`);
+      if (res.ok) {
+        statusDot.className = "status-dot online";
+        statusText.textContent = "backend connected";
+      } else {
+        throw new Error();
+      }
+    } catch {
+      statusDot.className = "status-dot offline";
+      statusText.textContent = "backend unreachable";
+    }
+  }
+  checkHealth();
+  setInterval(checkHealth, 15000);
+
+  // ---- Source tabs ------------------------------------------------------
+  document.querySelectorAll(".source-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".source-tab").forEach((t) => { t.classList.remove("active"); t.setAttribute("aria-selected", "false"); });
+      tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
+      const target = tab.dataset.tab;
+      el("uploadTab").style.display = target === "upload" ? "block" : "none";
+      el("pasteTab").classList.toggle("active", target === "paste");
+      updateRunButton();
+    });
+  });
+
+  // ---- Mode tags --------------------------------------------------------
+  document.querySelectorAll(".mode-tag").forEach((tag) => {
+    const selectMode = () => {
+      document.querySelectorAll(".mode-tag").forEach((t) => { t.classList.remove("active"); t.setAttribute("aria-checked", "false"); });
+      tag.classList.add("active");
+      tag.setAttribute("aria-checked", "true");
+      currentMode = tag.dataset.mode;
+      outputModeBadge.textContent = currentMode;
+
+      const colorVar = `--accent-${currentMode}`;
+      const tintVar = `--accent-${currentMode}-tint`;
+      document.documentElement.style.setProperty("--mode-color", `var(${colorVar})`);
+      document.documentElement.style.setProperty("--mode-tint", `var(${tintVar})`);
+
+      // Only auto-fill the default if the user hasn't customized it
+      if (!userEditedQuery) {
+        queryInput.value = DEFAULT_QUERIES[currentMode];
+      }
+    };
+    tag.addEventListener("click", selectMode);
+    tag.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectMode(); }
+    });
+  });
+
+  queryInput.addEventListener("input", () => { userEditedQuery = true; });
+
+  // ---- Dropzone / file upload --------------------------------------------
+  dropzone.addEventListener("click", () => fileInput.click());
+  dropzone.addEventListener("dragover", (e) => { e.preventDefault(); dropzone.classList.add("drag-over"); });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("drag-over");
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  async function handleFile(file) {
+    hideError();
+
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      showError("Only PDF files are supported.");
+      return;
+    }
+    if (file.size === 0) {
+      showError("That file is empty.");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      showError(`File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max is 20MB.`);
+      return;
+    }
+
+    docCard.classList.add("show", "indexing");
+    docName.textContent = file.name;
+    docMeta.textContent = "Indexing…";
+    runBtn.disabled = true;
+    setRunLabel("Indexing document…");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${API_BASE}/upload`, { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Upload failed.");
+      }
+
+      currentFileId = data.file_id;
+      docCard.classList.remove("indexing");
+      docMeta.textContent = `${data.chunks_created} chunks · ${data.total_documents_in_store} total in store`;
+      updateRunButton();
+    } catch (err) {
+      docCard.classList.remove("show", "indexing");
+      showError(err.message || "Could not reach the backend.");
+      runBtn.disabled = true;
+      setRunLabel("Upload a document to begin");
+    }
+  }
+
+  function updateRunButton() {
+    const pasteActive = el("pasteTab").classList.contains("active");
+    if (pasteActive) {
+      runBtn.disabled = true;
+      setRunLabel("Text input not yet supported by backend");
+    } else if (currentFileId) {
+      runBtn.disabled = false;
+      setRunLabel("Run");
+    } else {
+      runBtn.disabled = true;
+      setRunLabel("Upload a document to begin");
+    }
+  }
+
+  // ---- Run / analyze (streaming) -----------------------------------------
+  runBtn.addEventListener("click", runAnalysis);
+
+  async function runAnalysis() {
+    hideError();
+    const query = queryInput.value.trim();
+    if (!query) {
+      showError("Write an instruction before running.");
+      return;
+    }
+
+    runBtn.disabled = true;
+    runBtn.classList.add("loading");
+    setRunLabel("Running…");
+    copyBtn.disabled = true;
+    outputPage.classList.add("streaming");
+    outputPage.innerHTML = '<span class="cursor-blink"></span>';
+
+    const formData = new FormData();
+    formData.append("mode", currentMode);
+    formData.append("query", query);
+    formData.append("top_k", topKInput.value || 5);
+
+    try {
+      const res = await fetch(`${API_BASE}/analyze`, { method: "POST", body: formData });
+
+      if (!res.ok) {
+        let detail = "Something went wrong.";
+        try {
+          const errJson = await res.json();
+          detail = errJson.detail || detail;
+        } catch {}
+        throw new Error(detail);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+      outputPage.textContent = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        fullText += decoder.decode(value, { stream: true });
+        outputPage.textContent = fullText;
+      }
+
+      outputPage.classList.remove("streaming");
+      copyBtn.disabled = !fullText;
+    } catch (err) {
+      outputPage.classList.remove("streaming");
+      outputPage.innerHTML = '<div class="empty-state"><span class="glyph">!</span><span>' + (err.message || "Request failed.") + '</span></div>';
+      showError(err.message || "Could not reach the backend.");
+    } finally {
+      runBtn.disabled = false;
+      runBtn.classList.remove("loading");
+      setRunLabel("Run");
+    }
+  }
+
+  // ---- Copy result --------------------------------------------------------
+  copyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(outputPage.textContent || "");
+      copyBtnLabel.textContent = "Copied";
+      setTimeout(() => { copyBtnLabel.textContent = "Copy"; }, 1500);
+    } catch {
+      copyBtnLabel.textContent = "Copy failed";
+      setTimeout(() => { copyBtnLabel.textContent = "Copy"; }, 1500);
+    }
+  });
+
+  function showError(msg) {
+    errorCardText.textContent = msg;
+    errorCard.classList.add("show");
+  }
+  function hideError() {
+    errorCard.classList.remove("show");
+    errorCardText.textContent = "";
+  }
+</script>
+
+</body>
+</html>
