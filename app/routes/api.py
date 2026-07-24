@@ -30,7 +30,14 @@ rag_retriever = RAGRetriever(vectorstore, embedding_manager)
 
 @router.get("/health")
 async def health():
-    return {"status": "ok"}
+    try:
+        if not embedding_manager.model:
+            return {"status": "degraded", "reason": "Embedding model not loaded"}
+        if vectorstore.collection is None:
+            return {"status": "degraded", "reason": "Vector store not initialized"}
+        return {"status": "ok", "embedding_model": embedding_manager.model_name}
+    except Exception as e:
+        return {"status": "error", "reason": str(e)}
 
 
 @router.post("/upload")
@@ -62,12 +69,19 @@ async def upload(file: UploadFile = File(...)):
     try:
         chunks = extract_and_chunk(save_path)
     except ExtractionError as e:
-        # Clean error instead of a raw pymupdf traceback reaching the client
+        if os.path.exists(save_path):
+            os.remove(save_path)
         raise HTTPException(status_code=422, detail=str(e))
 
-    texts = [doc.page_content for doc in chunks]
-    embeddings = embedding_manager.generate_embeddings(texts)
-    vectorstore.add_documents(chunks, embeddings, source_id=file_id)
+    try:
+        texts = [doc.page_content for doc in chunks]
+        embeddings = embedding_manager.generate_embeddings(texts)
+        vectorstore.add_documents(chunks, embeddings, source_id=file_id)
+    except Exception as e:
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        raise HTTPException(status_code=500, detail=f"Failed to process document: {str(e)}")
+
 
     return {
         "file_id": file_id,

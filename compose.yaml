@@ -1,0 +1,14 @@
+services:
+  proyekt2:
+    image: proyekt2
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - 8000:8000
+    env_file:
+      - .env  
+    restart: unless-stopped
+    volumes:
+      - ./data/pdf:/code/data/pdf
+      - ./data/vector_store:/code/data/vector_store 
